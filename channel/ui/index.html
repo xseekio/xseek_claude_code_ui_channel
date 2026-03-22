@@ -1183,32 +1183,30 @@
       });
     }
 
-    /* ── Loop Tracking ── */
+    /* ── Loop Tracking (server-synced via WebSocket) ── */
     const loopsSidebar = document.getElementById('loops-sidebar');
     const loopsCount = document.getElementById('loops-count');
     const loopsList = document.getElementById('loops-list');
     const loopsEmpty = document.getElementById('loops-empty');
     const loopsAddBtn = document.getElementById('loops-add-btn');
 
-    function getLoops() {
-      try {
-        return JSON.parse(localStorage.getItem('xseek-loops') || '[]');
-      } catch { return []; }
+    let currentLoops = [];
+
+    function requestLoops() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'loops:list' }));
+      }
     }
 
-    function saveLoops(loops) {
-      localStorage.setItem('xseek-loops', JSON.stringify(loops));
+    function removeLoop(id) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'loops:remove', id }));
+      }
     }
 
-    function parseLoopCommand(text) {
-      const match = text.match(/^\/loop\s+(\d+[smhd]?m?)\s+(.+)$/i);
-      if (!match) return null;
-      return {
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-        interval: match[1],
-        command: match[2].trim(),
-        createdAt: new Date().toISOString(),
-      };
+    function handleLoopsState(loops) {
+      currentLoops = loops;
+      renderLoops();
     }
 
     function formatInterval(interval) {
@@ -1234,26 +1232,12 @@
       return `${days}d ago`;
     }
 
-    function addLoop(loopData) {
-      const loops = getLoops();
-      loops.push(loopData);
-      saveLoops(loops);
-      renderLoops();
-    }
-
-    function removeLoop(id) {
-      const loops = getLoops().filter(l => l.id !== id);
-      saveLoops(loops);
-      renderLoops();
-    }
-
     function renderLoops() {
-      const loops = getLoops();
-      loopsCount.textContent = loops.length;
+      loopsCount.textContent = currentLoops.length;
       loopsList.innerHTML = '';
-      loopsEmpty.style.display = loops.length === 0 ? 'block' : 'none';
+      loopsEmpty.style.display = currentLoops.length === 0 ? 'block' : 'none';
 
-      loops.forEach(loop => {
+      currentLoops.forEach(loop => {
         const item = document.createElement('div');
         item.className = 'loop-item';
         item.innerHTML = `
@@ -1284,11 +1268,6 @@
     /* ── Core Functions ── */
     function sendCommand(text) {
       if (!ws || isWaiting) return;
-
-      // Track /loop commands
-      const loopData = parseLoopCommand(text);
-      if (loopData) addLoop(loopData);
-
       switchToChat();
       addMessage(text, 'user');
       ws.send(JSON.stringify({ type: 'message', text }));
@@ -1510,6 +1489,10 @@
           setWaiting(false);
           addMessage(data.text, 'claude');
         }
+
+        if (data.type === 'loops:state') {
+          handleLoopsState(data.loops || []);
+        }
       };
 
       ws.onclose = () => {
@@ -1601,7 +1584,6 @@
     document.body.classList.add('centered');
     buildQuickActions();
     buildCmdDropdown();
-    renderLoops();
     connect();
   </script>
 </body>

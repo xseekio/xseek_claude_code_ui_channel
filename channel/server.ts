@@ -13,6 +13,44 @@ import { WebSocketServer, WebSocket } from "ws";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// ── Loop Registry ─────────────────────────────────────────────────
+
+type Loop = {
+  id: string;
+  interval: string;
+  command: string;
+  createdAt: string;
+};
+
+const loops = new Map<string, Loop>();
+
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function parseLoopCommand(text: string): Loop | null {
+  const match = text.match(/^\/loop\s+(\d+[smhd]?m?)\s+(.+)$/i);
+  if (!match) return null;
+  return {
+    id: generateId(),
+    interval: match[1],
+    command: match[2].trim(),
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function broadcastLoops(): void {
+  const payload = JSON.stringify({
+    type: "loops:state",
+    loops: Array.from(loops.values()),
+  });
+  for (const ws of clients.values()) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(payload);
+    }
+  }
+}
+
 // ── MCP Channel Server ─────────────────────────────────────────────
 
 const mcp = new Server(
@@ -110,11 +148,19 @@ wss.on("connection", (ws) => {
   const chatId = String(nextChatId++);
   clients.set(chatId, ws);
 
+  // Send connection ack + current loop state
   ws.send(
     JSON.stringify({
       type: "connected",
       chatId,
       message: "Connected to Claude Code channel",
+    })
+  );
+
+  ws.send(
+    JSON.stringify({
+      type: "loops:state",
+      loops: Array.from(loops.values()),
     })
   );
 
@@ -124,6 +170,16 @@ wss.on("connection", (ws) => {
     const data = JSON.parse(String(raw));
 
     if (data.type === "message") {
+      // Intercept /loop commands to register in the loop registry
+      const loop = parseLoopCommand(data.text);
+      if (loop) {
+        loops.set(loop.id, loop);
+        console.error(
+          `[channel-ui] Loop registered: id=${loop.id} interval=${loop.interval} cmd=${loop.command}`
+        );
+        broadcastLoops();
+      }
+
       // Forward user message to Claude Code via MCP notification
       await mcp.notification({
         method: "notifications/claude/channel",
@@ -138,6 +194,24 @@ wss.on("connection", (ws) => {
       console.error(
         `[channel-ui] Message forwarded to Claude: chat_id=${chatId}`
       );
+    }
+
+    // ── Loop management messages ──
+    if (data.type === "loops:list") {
+      ws.send(
+        JSON.stringify({
+          type: "loops:state",
+          loops: Array.from(loops.values()),
+        })
+      );
+    }
+
+    if (data.type === "loops:remove") {
+      if (data.id && loops.has(data.id)) {
+        loops.delete(data.id);
+        console.error(`[channel-ui] Loop removed: id=${data.id}`);
+        broadcastLoops();
+      }
     }
   });
 
