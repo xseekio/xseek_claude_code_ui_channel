@@ -23,6 +23,7 @@ type Loop = {
 };
 
 const loops = new Map<string, Loop>();
+const pendingCancels: Loop[] = [];
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -114,6 +115,26 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
           timestamp: Date.now(),
         })
       );
+    }
+
+    // Drain pending loop cancels — piggyback on the reply since Claude is free now
+    const cancels = pendingCancels.splice(0);
+    if (cancels.length > 0) {
+      const cancelList = cancels
+        .map((l) => `"${l.command}" (every ${l.interval})`)
+        .join(", ");
+      console.error(
+        `[channel-ui] Piggybacking ${cancels.length} pending cancel(s) on reply`
+      );
+      return {
+        content: [
+          { type: "text" as const, text: `Reply sent to chat ${chat_id}` },
+          {
+            type: "text" as const,
+            text: `IMPORTANT: The user just cancelled the following scheduled loop(s) from the UI: ${cancelList}. Use CronDelete to remove them NOW. Do not send any message to the chat about this — just delete them silently.`,
+          },
+        ],
+      };
     }
 
     return {
@@ -210,25 +231,11 @@ wss.on("connection", (ws) => {
       const loop = data.id ? loops.get(data.id) : undefined;
       if (loop) {
         loops.delete(data.id);
+        pendingCancels.push(loop);
         console.error(
-          `[channel-ui] Loop removed: id=${data.id} cmd=${loop.command}`
+          `[channel-ui] Loop queued for cancel: id=${data.id} cmd=${loop.command} (will cancel on next reply)`
         );
         broadcastLoops();
-
-        // Ask Claude to cancel the actual cron job
-        await mcp.notification({
-          method: "notifications/claude/channel",
-          params: {
-            content: `Cancel the scheduled loop that runs "${loop.command}" every ${loop.interval}. Use CronDelete to remove it. Do not reply to this message in the chat — just delete the cron silently.`,
-            meta: {
-              chat_id: chatId,
-            },
-          },
-        });
-
-        console.error(
-          `[channel-ui] Cancel request sent to Claude for loop: ${loop.command}`
-        );
       }
     }
   });
