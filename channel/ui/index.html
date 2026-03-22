@@ -616,6 +616,40 @@
       text-align: center;
     }
 
+    .loops-refresh-btn {
+      width: 24px;
+      height: 24px;
+      border: none;
+      background: none;
+      color: var(--text-light);
+      cursor: pointer;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.15s;
+    }
+
+    .loops-refresh-btn:hover {
+      color: var(--medium-blue);
+      background: var(--light-blue-10);
+    }
+
+    .loops-refresh-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .loops-refresh-btn.spinning svg {
+      animation: spin 0.6s ease;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
     .loops-sidebar-empty {
       padding: 24px 16px;
       text-align: center;
@@ -987,6 +1021,9 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         <span class="loops-sidebar-title">Scheduled Loops</span>
         <span class="loops-sidebar-count" id="loops-count">0</span>
+        <button class="loops-refresh-btn" id="loops-refresh-btn" title="Refresh">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        </button>
       </div>
       <div class="loops-sidebar-empty" id="loops-empty">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -1189,6 +1226,7 @@
     const loopsList = document.getElementById('loops-list');
     const loopsEmpty = document.getElementById('loops-empty');
     const loopsAddBtn = document.getElementById('loops-add-btn');
+    const loopsRefreshBtn = document.getElementById('loops-refresh-btn');
 
     let currentLoops = [];
 
@@ -1263,6 +1301,12 @@
       inputEl.value = '/loop ';
       inputEl.focus();
       handleInputChange();
+    });
+
+    loopsRefreshBtn.addEventListener('click', () => {
+      loopsRefreshBtn.classList.add('spinning');
+      requestLoops();
+      setTimeout(() => loopsRefreshBtn.classList.remove('spinning'), 600);
     });
 
     /* ── Core Functions ── */
