@@ -1326,13 +1326,11 @@
         // Animate greeting out
         const greeting = document.querySelector('.welcome-greeting');
         if (greeting) greeting.classList.add('hiding');
-        // Slight delay then switch layout
-        setTimeout(() => {
-          document.body.classList.remove('centered');
-          messagesEl.classList.add('active');
-          messagesEl.classList.add('entering');
-          setTimeout(() => messagesEl.classList.remove('entering'), 500);
-        }, 150);
+        // Switch layout immediately so messages are visible
+        document.body.classList.remove('centered');
+        messagesEl.classList.add('active');
+        messagesEl.classList.add('entering');
+        setTimeout(() => messagesEl.classList.remove('entering'), 500);
       }
     }
 
@@ -1530,6 +1528,12 @@
         }
 
         if (data.type === 'reply') {
+          // Ensure we're in chat mode before rendering reply
+          if (!hasSentMessage) {
+            hasSentMessage = true;
+            document.body.classList.remove('centered');
+            messagesEl.classList.add('active');
+          }
           setWaiting(false);
           addMessage(data.text, 'claude');
         }
