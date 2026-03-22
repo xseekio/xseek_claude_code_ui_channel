@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "channel-ui": {
+      "command": "npx",
+      "args": ["tsx", "channel/server.ts"],
+      "cwd": "."
+    }
+  }
+}

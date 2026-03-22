@@ -1,0 +1,8 @@
+{
+  "name": "channel-ui",
+  "description": "A web-based chat UI channel for Claude Code. Opens a local browser UI that communicates with your running Claude Code session.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Marc-Olivier Bouchard"
+  }
+}

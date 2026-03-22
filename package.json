@@ -1,0 +1,19 @@
+{
+  "name": "claude-channel-ui-plugin",
+  "version": "0.1.0",
+  "description": "A Claude Code channel plugin with a web UI for chatting with your local Claude Code instance",
+  "type": "module",
+  "scripts": {
+    "dev": "npx tsx channel/server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
