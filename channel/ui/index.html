@@ -1288,7 +1288,13 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         `;
-        item.querySelector('.loop-remove').addEventListener('click', () => removeLoop(loop.id));
+        item.querySelector('.loop-remove').addEventListener('click', () => {
+          // Visual feedback before server removes it
+          item.style.opacity = '0.4';
+          item.querySelector('.loop-meta').textContent = 'Cancelling...';
+          item.querySelector('.loop-status-dot').style.background = 'var(--yellow)';
+          removeLoop(loop.id);
+        });
         loopsList.appendChild(item);
       });
     }

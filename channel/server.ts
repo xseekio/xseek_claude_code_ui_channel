@@ -207,10 +207,28 @@ wss.on("connection", (ws) => {
     }
 
     if (data.type === "loops:remove") {
-      if (data.id && loops.has(data.id)) {
+      const loop = data.id ? loops.get(data.id) : undefined;
+      if (loop) {
         loops.delete(data.id);
-        console.error(`[channel-ui] Loop removed: id=${data.id}`);
+        console.error(
+          `[channel-ui] Loop removed: id=${data.id} cmd=${loop.command}`
+        );
         broadcastLoops();
+
+        // Ask Claude to cancel the actual cron job
+        await mcp.notification({
+          method: "notifications/claude/channel",
+          params: {
+            content: `Cancel the scheduled loop that runs "${loop.command}" every ${loop.interval}. Use CronDelete to remove it. Do not reply to this message in the chat — just delete the cron silently.`,
+            meta: {
+              chat_id: chatId,
+            },
+          },
+        });
+
+        console.error(
+          `[channel-ui] Cancel request sent to Claude for loop: ${loop.command}`
+        );
       }
     }
   });
