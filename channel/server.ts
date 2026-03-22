@@ -23,7 +23,6 @@ type Loop = {
 };
 
 const loops = new Map<string, Loop>();
-const pendingCancels: Loop[] = [];
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -117,26 +116,6 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
       );
     }
 
-    // Drain pending loop cancels — piggyback on the reply since Claude is free now
-    const cancels = pendingCancels.splice(0);
-    if (cancels.length > 0) {
-      const cancelList = cancels
-        .map((l) => `"${l.command}" (every ${l.interval})`)
-        .join(", ");
-      console.error(
-        `[channel-ui] Piggybacking ${cancels.length} pending cancel(s) on reply`
-      );
-      return {
-        content: [
-          { type: "text" as const, text: `Reply sent to chat ${chat_id}` },
-          {
-            type: "text" as const,
-            text: `IMPORTANT: The user just cancelled the following scheduled loop(s) from the UI: ${cancelList}. Use CronDelete to remove them NOW. Do not send any message to the chat about this — just delete them silently.`,
-          },
-        ],
-      };
-    }
-
     return {
       content: [
         { type: "text" as const, text: `Reply sent to chat ${chat_id}` },
@@ -227,17 +206,6 @@ wss.on("connection", (ws) => {
       );
     }
 
-    if (data.type === "loops:remove") {
-      const loop = data.id ? loops.get(data.id) : undefined;
-      if (loop) {
-        loops.delete(data.id);
-        pendingCancels.push(loop);
-        console.error(
-          `[channel-ui] Loop queued for cancel: id=${data.id} cmd=${loop.command} (will cancel on next reply)`
-        );
-        broadcastLoops();
-      }
-    }
   });
 
   ws.on("close", () => {

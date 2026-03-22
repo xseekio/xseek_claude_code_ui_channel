@@ -719,31 +719,6 @@
       margin-top: 2px;
     }
 
-    .loop-remove {
-      width: 22px;
-      height: 22px;
-      border: none;
-      background: none;
-      color: var(--text-light);
-      cursor: pointer;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      transition: all 0.1s;
-      margin-top: 1px;
-    }
-
-    .loop-remove:hover {
-      background: rgba(239, 68, 68, 0.1);
-      color: var(--red);
-    }
-
-    .loop-remove svg {
-      width: 12px;
-      height: 12px;
-    }
 
     .loops-sidebar-add {
       padding: 12px 16px;
@@ -1236,12 +1211,6 @@
       }
     }
 
-    function removeLoop(id) {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'loops:remove', id }));
-      }
-    }
-
     function handleLoopsState(loops) {
       currentLoops = loops;
       renderLoops();
@@ -1284,17 +1253,7 @@
             <div class="loop-command">${escapeHtml(loop.command)}</div>
             <div class="loop-meta">${formatInterval(loop.interval)} &middot; started ${formatTimeAgo(loop.createdAt)}</div>
           </div>
-          <button class="loop-remove" title="Remove">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
         `;
-        item.querySelector('.loop-remove').addEventListener('click', () => {
-          // Visual feedback before server removes it
-          item.style.opacity = '0.4';
-          item.querySelector('.loop-meta').textContent = 'Cancelling...';
-          item.querySelector('.loop-status-dot').style.background = 'var(--yellow)';
-          removeLoop(loop.id);
-        });
         loopsList.appendChild(item);
       });
     }
