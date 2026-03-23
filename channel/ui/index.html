@@ -1005,7 +1005,7 @@
 
       ws.onopen = () => {
         statusDot.classList.add('connected');
-        statusLabel.textContent = 'Connected';
+        statusLabel.textContent = activeChatId ? 'Chat ' + activeChatId : 'Connected';
         // Rejoin active session on reconnect
         if (activeChatId) {
           ws.send(JSON.stringify({ type: 'session:join', chatId: activeChatId }));
@@ -1026,9 +1026,15 @@
           activeChatId = data.chatId;
           hasSentMessage = false;
           isWaiting = false;
+          statusLabel.textContent = 'Chat ' + data.chatId;
           document.body.classList.add('centered');
           messagesEl.classList.remove('active');
           messagesEl.innerHTML = '';
+          // Reset welcome greeting
+          const greeting = document.querySelector('.welcome-greeting');
+          if (greeting) {
+            greeting.classList.remove('hiding');
+          }
           inputEl.disabled = false;
           sendBtn.disabled = false;
           inputEl.focus();
@@ -1037,6 +1043,7 @@
         // Joined existing session with full message history
         if (data.type === 'session:joined') {
           activeChatId = data.chatId;
+          statusLabel.textContent = 'Chat ' + data.chatId;
           const msgs = data.messages || [];
           messagesEl.innerHTML = '';
           if (msgs.length > 0) {
