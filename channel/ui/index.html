@@ -997,7 +997,7 @@
   </div>
 
   <script>
-    /* ── SVG Icons (stroke-based, 24x24 viewBox) ── */
+    /* ── SVG Icons ── */
     const ICONS = {
       barChart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg>',
       shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l7 4v5c0 5.25-3.5 9.74-7 11-3.5-1.26-7-5.75-7-11V6l7-4z"/><path d="M9 12l2 2 4-4"/></svg>',
@@ -1033,18 +1033,14 @@
     const cmdDropdown = document.getElementById('cmd-dropdown');
     const cmdList = document.getElementById('cmd-list');
 
-    /* ── Multi-chat State ── */
-    const chats = new Map(); // id -> { ws, chatId, messages[], isWaiting, hasSentMessage, lastMessage, createdAt }
-    let activeChatId = null;
-    let chatCounter = 0;
-
-    // Compat aliases (point to active chat)
+    /* ── State ── */
     let ws = null;
-    let chatId = null;
+    let activeChatId = null;
     let isWaiting = false;
     let hasSentMessage = false;
     let cmdSelectedIndex = -1;
     let cmdFiltered = [];
+    const serverSessions = [];
 
     const chatsListEl = document.getElementById('chats-list');
     const newChatBtn = document.getElementById('new-chat-btn');
@@ -1139,59 +1135,73 @@
       });
     }
 
-    /* ── Multi-chat Management ── */
-    function createChat() {
-      const id = ++chatCounter;
-      const chat = {
-        id,
-        ws: null,
-        chatId: null,
-        messages: [], // { text, type }
-        isWaiting: false,
-        hasSentMessage: false,
-        lastMessage: '',
-        createdAt: new Date(),
-        connected: false,
-      };
-      chats.set(id, chat);
-      connectChat(chat);
-      switchChat(id);
-      renderChatList();
-      return chat;
-    }
-
-    function connectChat(chat) {
+    /* ── WebSocket (single shared connection) ── */
+    function connectWs() {
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const socket = new WebSocket(`${protocol}//${location.host}/ws`);
+      ws = new WebSocket(`${protocol}//${location.host}/ws`);
 
-      socket.onopen = () => {
-        chat.connected = true;
-        if (chat.id === activeChatId) {
-          statusDot.classList.add('connected');
-          statusLabel.textContent = 'Connected';
+      ws.onopen = () => {
+        statusDot.classList.add('connected');
+        statusLabel.textContent = 'Connected';
+        // Rejoin active session on reconnect
+        if (activeChatId) {
+          ws.send(JSON.stringify({ type: 'session:join', chatId: activeChatId }));
         }
-        renderChatList();
       };
 
-      socket.onmessage = (event) => {
+      ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
-        if (data.type === 'connected') {
-          chat.chatId = data.chatId;
-          if (chat.id === activeChatId) {
-            chatIdDisplay.textContent = data.chatId;
-            inputEl.disabled = false;
-            sendBtn.disabled = false;
-            inputEl.focus();
-          }
+        // Session list from server (sent on connect + on changes)
+        if (data.type === 'sessions:list') {
+          serverSessions.length = 0;
+          data.sessions.forEach(s => serverSessions.push(s));
+          renderChatList();
         }
 
-        if (data.type === 'reply') {
-          chat.messages.push({ text: data.text, type: 'claude' });
-          chat.lastMessage = data.text.slice(0, 60);
-          chat.isWaiting = false;
+        // New session created
+        if (data.type === 'session:created') {
+          activeChatId = data.chatId;
+          hasSentMessage = false;
+          isWaiting = false;
+          chatIdDisplay.textContent = data.chatId;
+          document.body.classList.add('centered');
+          messagesEl.classList.remove('active');
+          messagesEl.innerHTML = '';
+          inputEl.disabled = false;
+          sendBtn.disabled = false;
+          inputEl.focus();
+          renderChatList();
+        }
 
-          if (chat.id === activeChatId) {
+        // Joined existing session with full message history
+        if (data.type === 'session:joined') {
+          activeChatId = data.chatId;
+          chatIdDisplay.textContent = data.chatId;
+          const msgs = data.messages || [];
+          messagesEl.innerHTML = '';
+          if (msgs.length > 0) {
+            hasSentMessage = true;
+            document.body.classList.remove('centered');
+            messagesEl.classList.add('active');
+            msgs.forEach(m => addMessageToDOM(m.text, m.type));
+          } else {
+            hasSentMessage = false;
+            document.body.classList.add('centered');
+            messagesEl.classList.remove('active');
+          }
+          isWaiting = false;
+          setWaiting(false);
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+          inputEl.disabled = false;
+          sendBtn.disabled = false;
+          inputEl.focus();
+          renderChatList();
+        }
+
+        // Reply from Claude
+        if (data.type === 'reply') {
+          if (data.chatId === activeChatId) {
             if (!hasSentMessage) {
               hasSentMessage = true;
               document.body.classList.remove('centered');
@@ -1200,155 +1210,90 @@
             setWaiting(false);
             addMessageToDOM(data.text, 'claude');
           }
-          renderChatList();
         }
 
-      };
-
-      socket.onclose = () => {
-        chat.connected = false;
-        if (chat.id === activeChatId) {
-          statusDot.classList.remove('connected');
-          statusLabel.textContent = 'Disconnected';
-          inputEl.disabled = true;
-          sendBtn.disabled = true;
+        if (data.type === 'loops:state') {
+          handleLoopsState(data.loops || []);
         }
-        renderChatList();
-        // Reconnect
-        setTimeout(() => {
-          if (chats.has(chat.id)) connectChat(chat);
-        }, 2000);
       };
 
-      socket.onerror = () => socket.close();
-      chat.ws = socket;
+      ws.onclose = () => {
+        statusDot.classList.remove('connected');
+        statusLabel.textContent = 'Reconnecting...';
+        inputEl.disabled = true;
+        sendBtn.disabled = true;
+        setTimeout(connectWs, 2000);
+      };
+
+      ws.onerror = () => ws.close();
     }
 
-    function switchChat(id) {
-      const chat = chats.get(id);
-      if (!chat) return;
-
-      activeChatId = id;
-
-      // Sync compat aliases
-      ws = chat.ws;
-      chatId = chat.chatId;
-      isWaiting = chat.isWaiting;
-      hasSentMessage = chat.hasSentMessage;
-
-      // Update header
-      chatIdDisplay.textContent = chat.chatId || '';
-      if (chat.connected) {
-        statusDot.classList.add('connected');
-        statusLabel.textContent = 'Connected';
-      } else {
-        statusDot.classList.remove('connected');
-        statusLabel.textContent = 'Disconnected';
+    /* ── Chat Management ── */
+    function createNewChat() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'session:create' }));
       }
+    }
 
-      // Update input state
-      inputEl.disabled = chat.isWaiting || !chat.connected;
-      sendBtn.disabled = chat.isWaiting || !chat.connected;
-
-      // Rebuild messages area
-      messagesEl.innerHTML = '';
-      if (chat.hasSentMessage) {
-        document.body.classList.remove('centered');
-        messagesEl.classList.add('active');
-        chat.messages.forEach(m => addMessageToDOM(m.text, m.type));
-
-        if (chat.isWaiting) {
-          const indicator = document.createElement('div');
-          indicator.className = 'typing-indicator visible';
-          indicator.innerHTML = `
-            <div class="typing-sender">
-              <div class="logo-icon"><img src="https://www.xseek.io/small_logo.webp" alt="xSeek" /></div>
-              xSeek
-            </div>
-            <div class="typing-bubbles"><span></span><span></span><span></span></div>
-          `;
-          messagesEl.appendChild(indicator);
-        }
-      } else {
-        document.body.classList.add('centered');
-        messagesEl.classList.remove('active');
+    function joinChat(chatId) {
+      if (chatId === activeChatId) return;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'session:join', chatId }));
       }
-
-      // Scroll to bottom
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-      if (!chat.isWaiting && chat.connected) inputEl.focus();
-
-      renderChatList();
     }
 
     function renderChatList() {
       chatsListEl.innerHTML = '';
-      const sorted = Array.from(chats.values()).sort((a, b) => b.createdAt - a.createdAt);
-
-      sorted.forEach(chat => {
+      const sorted = [...serverSessions].sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      sorted.forEach(s => {
         const item = document.createElement('div');
-        item.className = 'chat-item' + (chat.id === activeChatId ? ' active' : '');
-        const preview = chat.lastMessage || 'New conversation';
-        const timeStr = formatChatTime(chat.createdAt);
+        item.className = 'chat-item' + (s.chatId === activeChatId ? ' active' : '');
+        const preview = s.lastMessage || 'New conversation';
         item.innerHTML = `
-          <div class="chat-item-dot ${chat.connected ? 'connected' : 'disconnected'}"></div>
+          <div class="chat-item-dot connected"></div>
           <div class="chat-item-info">
-            <div class="chat-item-name">Chat ${chat.chatId || '...'}</div>
+            <div class="chat-item-name">Chat ${s.chatId}</div>
             <div class="chat-item-preview">${escapeHtml(preview)}</div>
           </div>
-          <span class="chat-item-time">${timeStr}</span>
+          <span class="chat-item-time">${formatChatTime(new Date(s.createdAt))}</span>
         `;
-        item.addEventListener('click', () => switchChat(chat.id));
+        item.addEventListener('click', () => joinChat(s.chatId));
         chatsListEl.appendChild(item);
       });
     }
 
     function formatChatTime(date) {
-      const now = new Date();
-      const diff = now - date;
+      const diff = Date.now() - date.getTime();
       if (diff < 60000) return 'now';
       if (diff < 3600000) return Math.floor(diff / 60000) + 'm';
       if (diff < 86400000) return Math.floor(diff / 3600000) + 'h';
       return Math.floor(diff / 86400000) + 'd';
     }
 
-    newChatBtn.addEventListener('click', () => createChat());
+    newChatBtn.addEventListener('click', () => createNewChat());
 
     /* ── Core Functions ── */
     function sendCommand(text) {
-      const chat = chats.get(activeChatId);
-      if (!chat || !chat.ws || chat.isWaiting) return;
+      if (!ws || ws.readyState !== WebSocket.OPEN || isWaiting || !activeChatId) return;
 
       switchToChat();
-
-      // Store in chat history
-      chat.messages.push({ text, type: 'user' });
-      chat.lastMessage = text.slice(0, 60);
-      chat.hasSentMessage = true;
       hasSentMessage = true;
-
       addMessageToDOM(text, 'user');
-      chat.ws.send(JSON.stringify({ type: 'message', text }));
+      ws.send(JSON.stringify({ type: 'message', text }));
       inputEl.value = '';
       inputEl.style.height = 'auto';
-
-      chat.isWaiting = true;
-      isWaiting = true;
       setWaiting(true);
-      renderChatList();
     }
 
     function switchToChat() {
       if (!hasSentMessage) {
         hasSentMessage = true;
-        // Animate greeting out
         const greeting = document.querySelector('.welcome-greeting');
         if (greeting) greeting.classList.add('hiding');
-        // Switch layout immediately so messages are visible
         document.body.classList.remove('centered');
         messagesEl.classList.add('active');
-        messagesEl.classList.add('entering');
-        setTimeout(() => messagesEl.classList.remove('entering'), 500);
       }
     }
 
@@ -1600,7 +1545,22 @@
     document.body.classList.add('centered');
     buildQuickActions();
     buildCmdDropdown();
-    createChat();
+    connectWs();
+    // Auto-create first session once connected
+    const _waitForWs = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        clearInterval(_waitForWs);
+        // If server has existing sessions, join the most recent one
+        if (serverSessions.length > 0) {
+          const latest = serverSessions.sort((a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          )[0];
+          joinChat(latest.chatId);
+        } else {
+          createNewChat();
+        }
+      }
+    }, 100);
   </script>
 </body>
 </html>

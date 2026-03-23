@@ -13,7 +13,7 @@ import { WebSocketServer, WebSocket } from "ws";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// ── Loop Registry ─────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────
 
 type Loop = {
   id: string;
@@ -22,11 +22,31 @@ type Loop = {
   createdAt: string;
 };
 
+type ChatMessage = {
+  text: string;
+  type: "user" | "claude";
+  timestamp: number;
+};
+
+type ChatSession = {
+  chatId: string;
+  messages: ChatMessage[];
+  createdAt: string;
+  lastMessage: string;
+};
+
+// ── State ─────────────────────────────────────────────────────────
+
 const loops = new Map<string, Loop>();
+const sessions = new Map<string, ChatSession>();
+const clients = new Map<string, WebSocket>(); // chatId -> active ws
+let nextChatId = 1;
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
+
+// ── Loop helpers ──────────────────────────────────────────────────
 
 function parseLoopCommand(text: string): Loop | null {
   const match = text.match(/^\/loop\s+(\d+[smhd]?m?)\s+(.+)$/i);
@@ -51,10 +71,46 @@ function broadcastLoops(): void {
   }
 }
 
+// ── Session helpers ───────────────────────────────────────────────
+
+function createSession(): ChatSession {
+  const chatId = String(nextChatId++);
+  const session: ChatSession = {
+    chatId,
+    messages: [],
+    createdAt: new Date().toISOString(),
+    lastMessage: "",
+  };
+  sessions.set(chatId, session);
+  console.error(`[channel-ui] Session created: chat_id=${chatId}`);
+  return session;
+}
+
+function getSessionsList() {
+  return Array.from(sessions.values()).map((s) => ({
+    chatId: s.chatId,
+    messageCount: s.messages.length,
+    lastMessage: s.lastMessage,
+    createdAt: s.createdAt,
+  }));
+}
+
+function broadcastSessionsList(): void {
+  const payload = JSON.stringify({
+    type: "sessions:list",
+    sessions: getSessionsList(),
+  });
+  for (const ws of clients.values()) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(payload);
+    }
+  }
+}
+
 // ── MCP Channel Server ─────────────────────────────────────────────
 
 const mcp = new Server(
-  { name: "channel-ui", version: "0.1.0" },
+  { name: "channel-ui", version: "0.2.0" },
   {
     capabilities: {
       experimental: { "claude/channel": {} },
@@ -67,12 +123,7 @@ Always reply to every message — the user is waiting for your response in the U
   }
 );
 
-// ── Connected WebSocket clients ─────────────────────────────────────
-
-const clients = new Map<string, WebSocket>();
-let nextChatId = 1;
-
-// ── MCP Tools: reply back to the UI ─────────────────────────────────
+// ── MCP Tools ───────────────────────────────────────────────────────
 
 mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -105,16 +156,23 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
       text: string;
     };
 
+    // Store reply in session
+    const session = sessions.get(chat_id);
+    if (session) {
+      session.messages.push({ text, type: "claude", timestamp: Date.now() });
+      session.lastMessage = text.slice(0, 80);
+    }
+
+    // Send to connected client
     const clientWs = clients.get(chat_id);
     if (clientWs && clientWs.readyState === WebSocket.OPEN) {
       clientWs.send(
-        JSON.stringify({
-          type: "reply",
-          text,
-          timestamp: Date.now(),
-        })
+        JSON.stringify({ type: "reply", chatId: chat_id, text, timestamp: Date.now() })
       );
     }
+
+    // Broadcast updated session list to all clients
+    broadcastSessionsList();
 
     return {
       content: [
@@ -145,15 +203,15 @@ const httpServer = createServer((_req, res) => {
 const wss = new WebSocketServer({ server: httpServer });
 
 wss.on("connection", (ws) => {
-  const chatId = String(nextChatId++);
-  clients.set(chatId, ws);
+  // Don't assign a chatId yet — wait for the client to either
+  // create a new session or join an existing one
+  let boundChatId: string | null = null;
 
-  // Send connection ack + current loop state
+  // Send existing sessions + loops immediately
   ws.send(
     JSON.stringify({
-      type: "connected",
-      chatId,
-      message: "Connected to Claude Code channel",
+      type: "sessions:list",
+      sessions: getSessionsList(),
     })
   );
 
@@ -164,13 +222,66 @@ wss.on("connection", (ws) => {
     })
   );
 
-  console.error(`[channel-ui] Client connected: chat_id=${chatId}`);
+  console.error(`[channel-ui] WebSocket connected (not yet bound to a session)`);
 
   ws.on("message", async (raw) => {
     const data = JSON.parse(String(raw));
 
-    if (data.type === "message") {
-      // Intercept /loop commands to register in the loop registry
+    // ── Create new session ──
+    if (data.type === "session:create") {
+      const session = createSession();
+      boundChatId = session.chatId;
+
+      // Unbind from previous session if any
+      clients.set(session.chatId, ws);
+
+      ws.send(
+        JSON.stringify({
+          type: "session:created",
+          chatId: session.chatId,
+          messages: [],
+        })
+      );
+
+      broadcastSessionsList();
+    }
+
+    // ── Join existing session ──
+    if (data.type === "session:join") {
+      const session = sessions.get(data.chatId);
+      if (session) {
+        boundChatId = session.chatId;
+        clients.set(session.chatId, ws);
+
+        ws.send(
+          JSON.stringify({
+            type: "session:joined",
+            chatId: session.chatId,
+            messages: session.messages,
+          })
+        );
+
+        console.error(
+          `[channel-ui] Client joined session: chat_id=${session.chatId} (${session.messages.length} messages)`
+        );
+      }
+    }
+
+    // ── Send message ──
+    if (data.type === "message" && boundChatId) {
+      const session = sessions.get(boundChatId);
+
+      // Store user message
+      if (session) {
+        session.messages.push({
+          text: data.text,
+          type: "user",
+          timestamp: Date.now(),
+        });
+        session.lastMessage = data.text.slice(0, 80);
+      }
+
+      // Intercept /loop commands
       const loop = parseLoopCommand(data.text);
       if (loop) {
         loops.set(loop.id, loop);
@@ -180,23 +291,23 @@ wss.on("connection", (ws) => {
         broadcastLoops();
       }
 
-      // Forward user message to Claude Code via MCP notification
+      // Forward to Claude Code
       await mcp.notification({
         method: "notifications/claude/channel",
         params: {
           content: data.text,
-          meta: {
-            chat_id: chatId,
-          },
+          meta: { chat_id: boundChatId },
         },
       });
 
+      broadcastSessionsList();
+
       console.error(
-        `[channel-ui] Message forwarded to Claude: chat_id=${chatId}`
+        `[channel-ui] Message forwarded to Claude: chat_id=${boundChatId}`
       );
     }
 
-    // ── Loop management messages ──
+    // ── Loop management ──
     if (data.type === "loops:list") {
       ws.send(
         JSON.stringify({
@@ -205,12 +316,19 @@ wss.on("connection", (ws) => {
         })
       );
     }
-
   });
 
   ws.on("close", () => {
-    clients.delete(chatId);
-    console.error(`[channel-ui] Client disconnected: chat_id=${chatId}`);
+    // Don't delete the session — just unbind the ws
+    if (boundChatId) {
+      const current = clients.get(boundChatId);
+      if (current === ws) {
+        clients.delete(boundChatId);
+      }
+      console.error(
+        `[channel-ui] Client disconnected from session: chat_id=${boundChatId}`
+      );
+    }
   });
 });
 
