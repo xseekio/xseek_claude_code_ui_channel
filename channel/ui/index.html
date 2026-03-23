@@ -130,12 +130,6 @@
       box-shadow: 0 0 0 3px rgba(0, 168, 150, 0.15);
     }
 
-    .session-id {
-      font-size: 11px;
-      color: var(--text-light);
-      font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
-      font-size: 10px;
-    }
 
     /* ── Main Content ────────────────────────── */
     .main-content {
@@ -152,10 +146,6 @@
 
     /* ── Centered State (no messages yet) ──── */
     body.centered .main-content {
-      display: none;
-    }
-
-    body.centered .sidebar {
       display: none;
     }
 
@@ -563,85 +553,106 @@
       min-width: 0;
     }
 
-    /* ── Sidebar ─────────────────────────────── */
-    .sidebar {
-      width: 260px;
-      border-right: 1px solid var(--border);
+    /* ── Chat Selector (header dropdown) ────── */
+    .chat-selector {
+      position: relative;
+    }
+
+    .chat-selector-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
       background: var(--bg);
-      display: flex;
-      flex-direction: column;
-      flex-shrink: 0;
-      overflow: hidden;
-    }
-
-    /* ── Chat List ───────────────────────────── */
-    .chats-section {
-      display: flex;
-      flex-direction: column;
-      flex-shrink: 0;
-    }
-
-    .chats-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-
-    .chats-header svg {
-      width: 16px;
-      height: 16px;
-      stroke: var(--medium-blue);
-      flex-shrink: 0;
-    }
-
-    .chats-header-title {
-      font-size: 13px;
-      font-weight: 600;
       color: var(--text);
-      flex: 1;
-    }
-
-    .chats-new-btn {
-      width: 24px;
-      height: 24px;
-      border: none;
-      background: none;
-      color: var(--text-light);
+      font-size: 13px;
+      font-weight: 500;
       cursor: pointer;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
       transition: all 0.15s;
     }
 
-    .chats-new-btn:hover {
-      color: var(--medium-blue);
+    .chat-selector-btn:hover {
+      border-color: var(--light-blue);
       background: var(--light-blue-10);
     }
 
-    .chats-new-btn svg {
-      width: 14px;
-      height: 14px;
+    .chat-selector-btn svg {
+      transition: transform 0.15s;
     }
 
-    .chats-list {
+    .chat-selector.open .chat-selector-btn svg {
+      transform: rotate(180deg);
+    }
+
+    .chat-selector-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 240px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1), 0 4px 10px rgba(0,0,0,0.05);
+      overflow: hidden;
+      z-index: 100;
+      animation: dropDown 0.12s ease;
+    }
+
+    @keyframes dropDown {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .chat-selector.open .chat-selector-dropdown {
+      display: block;
+    }
+
+    .chat-selector-list {
+      max-height: 240px;
       overflow-y: auto;
-      max-height: 200px;
+      padding: 4px 0;
+    }
+
+    .chat-selector-divider {
+      height: 1px;
+      background: var(--border);
+    }
+
+    .chat-selector-new {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 10px 14px;
+      border: none;
+      background: none;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.1s;
+    }
+
+    .chat-selector-new:hover {
+      background: var(--light-blue-10);
+      color: var(--medium-blue);
+    }
+
+    .chat-selector-new svg {
+      width: 14px;
+      height: 14px;
     }
 
     .chat-item {
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 9px 16px;
+      padding: 8px 14px;
       cursor: pointer;
       transition: background 0.1s;
-      border-left: 3px solid transparent;
     }
 
     .chat-item:hover {
@@ -650,23 +661,14 @@
 
     .chat-item.active {
       background: var(--light-blue-10);
-      border-left-color: var(--medium-blue);
     }
 
     .chat-item-dot {
-      width: 7px;
-      height: 7px;
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
-      flex-shrink: 0;
-    }
-
-    .chat-item-dot.connected {
       background: var(--teal);
-      box-shadow: 0 0 0 2px rgba(0, 168, 150, 0.15);
-    }
-
-    .chat-item-dot.disconnected {
-      background: var(--border);
+      flex-shrink: 0;
     }
 
     .chat-item-info {
@@ -678,9 +680,6 @@
       font-size: 13px;
       font-weight: 500;
       color: var(--text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
     }
 
     .chat-item-preview {
@@ -690,12 +689,6 @@
       overflow: hidden;
       text-overflow: ellipsis;
       margin-top: 1px;
-    }
-
-    .chat-item-time {
-      font-size: 10px;
-      color: var(--text-light);
-      flex-shrink: 0;
     }
 
 
@@ -902,9 +895,6 @@
 
     /* ── Responsive ──────────────────────────── */
     @media (max-width: 700px) {
-      .sidebar {
-        display: none;
-      }
       .composer {
         padding: 0 16px 16px;
       }
@@ -923,31 +913,29 @@
       <div class="logo-text">x<em>Seek</em></div>
     </div>
     <div class="header-right">
+      <!-- Chat selector -->
+      <div class="chat-selector" id="chat-selector">
+        <button class="chat-selector-btn" id="chat-selector-btn">
+          <span id="chat-selector-label">Chat 1</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="chat-selector-dropdown" id="chat-selector-dropdown">
+          <div class="chat-selector-list" id="chats-list"></div>
+          <div class="chat-selector-divider"></div>
+          <button class="chat-selector-new" id="new-chat-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New chat
+          </button>
+        </div>
+      </div>
       <div class="status-indicator">
         <div class="status-dot" id="status-dot"></div>
         <span id="status-label">Disconnected</span>
       </div>
-      <span class="session-id" id="chat-id-display"></span>
     </div>
   </header>
 
   <div class="app-layout">
-    <!-- Sidebar -->
-    <div class="sidebar" id="sidebar">
-      <!-- Chats Section -->
-      <div class="chats-section">
-        <div class="chats-header">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-          <span class="chats-header-title">Chats</span>
-          <button class="chats-new-btn" id="new-chat-btn" title="New chat">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-        </div>
-        <div class="chats-list" id="chats-list"></div>
-      </div>
-
-    </div>
-
     <!-- Main Area -->
     <div class="app-main">
       <div class="main-content">
@@ -1028,7 +1016,9 @@
     const formEl = document.getElementById('input-form');
     const statusDot = document.getElementById('status-dot');
     const statusLabel = document.getElementById('status-label');
-    const chatIdDisplay = document.getElementById('chat-id-display');
+    const chatSelectorLabel = document.getElementById('chat-selector-label');
+    const chatSelectorEl = document.getElementById('chat-selector');
+    const chatSelectorBtn = document.getElementById('chat-selector-btn');
     const quickActionsEl = document.getElementById('quick-actions');
     const cmdDropdown = document.getElementById('cmd-dropdown');
     const cmdList = document.getElementById('cmd-list');
@@ -1164,7 +1154,7 @@
           activeChatId = data.chatId;
           hasSentMessage = false;
           isWaiting = false;
-          chatIdDisplay.textContent = data.chatId;
+          chatSelectorLabel.textContent = 'Chat ' + data.chatId;
           document.body.classList.add('centered');
           messagesEl.classList.remove('active');
           messagesEl.innerHTML = '';
@@ -1177,7 +1167,7 @@
         // Joined existing session with full message history
         if (data.type === 'session:joined') {
           activeChatId = data.chatId;
-          chatIdDisplay.textContent = data.chatId;
+          chatSelectorLabel.textContent = 'Chat ' + data.chatId;
           const msgs = data.messages || [];
           messagesEl.innerHTML = '';
           if (msgs.length > 0) {
@@ -1252,27 +1242,35 @@
         item.className = 'chat-item' + (s.chatId === activeChatId ? ' active' : '');
         const preview = s.lastMessage || 'New conversation';
         item.innerHTML = `
-          <div class="chat-item-dot connected"></div>
+          <div class="chat-item-dot"></div>
           <div class="chat-item-info">
             <div class="chat-item-name">Chat ${s.chatId}</div>
             <div class="chat-item-preview">${escapeHtml(preview)}</div>
           </div>
-          <span class="chat-item-time">${formatChatTime(new Date(s.createdAt))}</span>
         `;
-        item.addEventListener('click', () => joinChat(s.chatId));
+        item.addEventListener('click', () => {
+          joinChat(s.chatId);
+          chatSelectorEl.classList.remove('open');
+        });
         chatsListEl.appendChild(item);
       });
     }
 
-    function formatChatTime(date) {
-      const diff = Date.now() - date.getTime();
-      if (diff < 60000) return 'now';
-      if (diff < 3600000) return Math.floor(diff / 60000) + 'm';
-      if (diff < 86400000) return Math.floor(diff / 3600000) + 'h';
-      return Math.floor(diff / 86400000) + 'd';
-    }
+    newChatBtn.addEventListener('click', () => {
+      createNewChat();
+      chatSelectorEl.classList.remove('open');
+    });
 
-    newChatBtn.addEventListener('click', () => createNewChat());
+    chatSelectorBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      chatSelectorEl.classList.toggle('open');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.chat-selector')) {
+        chatSelectorEl.classList.remove('open');
+      }
+    });
 
     /* ── Core Functions ── */
     function sendCommand(text) {
